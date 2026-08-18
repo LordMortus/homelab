@@ -41,7 +41,3 @@ homelab/
 - `docker logs traefik` produces **no output** — logs write to file only (configured in traefik.yml)
 - Multi-network containers need the `traefik.docker.network=proxy` label
 - `insecureSkipVerify: true` via a named `serversTransport` for upstream services with self-signed certs (Proxmox, TrueNAS)
-
-## Related Repos
-
-- [`dotfiles`](https://github.com/LordMortus/dotfiles) — workstation configs (zsh, niri, alacritty, waybar, tmux)
