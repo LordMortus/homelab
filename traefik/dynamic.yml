@@ -1,0 +1,80 @@
+http:
+  routers:
+    proxmox:
+      rule: "Host(`proxmox.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: cloudflare
+      service: proxmox
+
+    proxnas:
+      rule: "Host(`proxnas.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: cloudflare
+      service: proxnas
+
+    truenas:
+      rule: "Host(`truenas.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: cloudflare
+      service: truenas
+
+    arm:
+      rule: "Host(`arm.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: cloudflare
+      service: arm
+
+    kuma:
+      rule: "Host(`kuma.yourdomain.com`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: cloudflare
+      service: kuma
+
+
+  services:
+    proxmox:
+      loadBalancer:
+        servers:
+          - url: "https://<PROXMOX_IP>:8006"
+        passHostHeader: true
+        serversTransport: insecureTransport
+
+    proxnas:
+      loadBalancer:
+        servers:
+          - url: "https://<PROXNAS_IP>:8443"
+        passHostHeader: true
+        serversTransport: insecureTransport
+
+    truenas:
+      loadBalancer:
+        servers:
+          - url: "https://<TRUENAS_IP>:8443"
+        passHostHeader: true
+        serversTransport: insecureTransport
+
+    arm:
+      loadBalancer:
+        servers:
+          - url: "http://<ARM_IP>:8080"
+        passHostHeader: true
+
+    kuma:
+      loadBalancer:
+        servers:
+          - url: "http://<KUMA_IP>:3001"
+
+
+  serversTransports:
+    insecureTransport:
+      insecureSkipVerify: true

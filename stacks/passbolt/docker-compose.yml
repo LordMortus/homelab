@@ -1,0 +1,124 @@
+networks:
+  proxy:
+    name: proxy
+    ipam:
+      config:
+        - subnet: 172.16.100.0/24
+  passbolt_internal:
+    internal: true
+
+volumes:
+  passbolt_db:
+  passbolt_gpg:
+  passbolt_jwt:
+
+services:
+
+  traefik:
+    image: traefik:v3.7
+    container_name: traefik
+    restart: unless-stopped
+    depends_on:
+      passbolt:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      start_period: 10s
+    networks:
+      - proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN}
+      TRAEFIK_CERTIFICATESRESOLVERS_CLOUDFLARE_ACME_EMAIL: ${LETSENCRYPT_EMAIL}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/data/traefik.yml:/traefik.yml:ro
+      - ./traefik/data/dynamic.yml:/dynamic.yml:ro
+      - ./traefik/data/acme.json:/acme.json
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`traefik.yourdomain.com`)"
+      - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.traefik-dashboard.tls.certresolver=cloudflare"
+      - "traefik.http.routers.traefik-dashboard.service=api@internal"
+      - "traefik.http.routers.traefik-dashboard.tls.domains[0].main=yourdomain.com"
+      - "traefik.http.routers.traefik-dashboard.tls.domains[0].sans=*.yourdomain.com"
+
+  db:
+    image: mariadb:10.11
+    container_name: passbolt_db
+    restart: unless-stopped
+    networks:
+      - passbolt_internal
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - passbolt_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  passbolt:
+    image: passbolt/passbolt:latest-ce-non-root
+    container_name: passbolt
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - proxy
+      - passbolt_internal
+    environment:
+      APP_FULL_BASE_URL: ${APP_FULL_BASE_URL}
+      DATASOURCES_DEFAULT_HOST: db
+      DATASOURCES_DEFAULT_PORT: 3306
+      DATASOURCES_DEFAULT_DATABASE: ${MYSQL_DATABASE}
+      DATASOURCES_DEFAULT_USERNAME: ${MYSQL_USER}
+      DATASOURCES_DEFAULT_PASSWORD: ${MYSQL_PASSWORD}
+      EMAIL_DEFAULT_FROM_NAME: ${EMAIL_DEFAULT_FROM_NAME}
+      EMAIL_DEFAULT_FROM: ${EMAIL_DEFAULT_FROM}
+      EMAIL_TRANSPORT_DEFAULT_HOST: ${EMAIL_TRANSPORT_DEFAULT_HOST}
+      EMAIL_TRANSPORT_DEFAULT_PORT: ${EMAIL_TRANSPORT_DEFAULT_PORT}
+      EMAIL_TRANSPORT_DEFAULT_USERNAME: ${EMAIL_TRANSPORT_DEFAULT_USERNAME}
+      EMAIL_TRANSPORT_DEFAULT_PASSWORD: ${EMAIL_TRANSPORT_DEFAULT_PASSWORD}
+      EMAIL_TRANSPORT_DEFAULT_TLS: ${EMAIL_TRANSPORT_DEFAULT_TLS}
+      PASSBOLT_SSL_FORCE: "false"
+      PASSBOLT_REGISTRATION_PUBLIC: "true"
+    volumes:
+      - passbolt_gpg:/etc/passbolt/gpg
+      - passbolt_jwt:/etc/passbolt/jwt
+    command:
+      [
+        "/usr/bin/wait-for.sh",
+        "-t", "0",
+        "db:3306",
+        "--",
+        "/docker-entrypoint.sh"
+      ]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.passbolt.rule=Host(`passbolt.yourdomain.com`)"
+      - "traefik.http.routers.passbolt.entrypoints=websecure"
+      - "traefik.http.routers.passbolt.tls.certresolver=cloudflare"
+      - "traefik.http.services.passbolt.loadbalancer.server.port=8080"
+      - "traefik.http.services.passbolt.loadbalancer.server.scheme=http"
+      - "traefik.docker.network=proxy"
